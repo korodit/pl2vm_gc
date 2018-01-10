@@ -1,0 +1,6 @@
+base64 -d << ___EOF___ | zcat > in/hw.b
+H4sICOa7OVoAA3Rlc3QuYgCNj7sOglAQRHcRM4HEwuq22PIJJFbGR/QriBJfCAQhhlha+L+2FjgSpdCY
+mFvs487OntWFQOBigDUSbLFHjhQneCgYE8Yjux4yHFBixyxoFDnfuCPWRGydi9GhSNe5XqyX2Qpxa5Qy
+jxFhRnlJeUV5LOjDN1CHzbPYcI3fzPes+g1UNR4RVz/XZXT6jZgw27IO2wmPuiXrgr+f0HdS1KS4yX/H
+FyQJsfnyGamtUzUa6ANY9UiJRwEAAA==
+___EOF___
