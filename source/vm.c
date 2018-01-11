@@ -99,6 +99,7 @@ struct con_cell{
     #endif
     #ifdef MARK_N_SWEEP 
         char reachable;
+        struct con_cell *next;
     #endif
     stackelement_t head;
     stackelement_t tail;
@@ -120,14 +121,7 @@ struct {
     long long int freed;
     long long int malloced;
 
-    struct mns_list_element{
-        concell_t *con_addr;
-        struct mns_list_element *next;
-    };
-
-    typedef struct mns_list_element mns_list_element;
-
-    mns_list_element *gc_mns_list;
+    concell_t *gc_mns_list;
 
     void mark_sweep();
     void mark();
@@ -345,7 +339,6 @@ int main(int argc, char* argv[]){
         freed = 0;
         malloced = 0;
         gc_mns_list = NULL;
-        mns_list_element *new_mns_el;
     #endif
 
     char *pc = program;
@@ -692,10 +685,8 @@ int main(int argc, char* argv[]){
                 #ifdef MARK_N_SWEEP
                     cc->reachable = UNREACHABLE;
                     malloced++;
-                    new_mns_el = malloc(sizeof(mns_list_element));
-                    new_mns_el->next = gc_mns_list;
-                    new_mns_el->con_addr = cc;
-                    gc_mns_list = new_mns_el;
+                    cc->next = gc_mns_list;
+                    gc_mns_list = cc;
 
                     if (malloced == GC_MALLOC_LIMIT){
                         mark_sweep();
@@ -771,12 +762,11 @@ int main(int argc, char* argv[]){
     }
 
     void sweep(){
-        mns_list_element *curr,*next,*prev;
+        concell_t *curr,*next,*prev;
         curr = gc_mns_list;
         if (curr!=NULL){
-            while(curr!=NULL && !curr->con_addr->reachable){
+            while(curr!=NULL && !curr->reachable){
                 next = curr->next;
-                free(curr->con_addr);
                 free(curr);
                 curr = next;
             }
@@ -785,8 +775,7 @@ int main(int argc, char* argv[]){
                 prev = curr;
                 curr = curr->next;
                 while(curr!=NULL){
-                    if (!curr->con_addr->reachable){
-                        free(curr->con_addr);
+                    if (!curr->reachable){
                         prev->next = curr->next;
                         free(curr);
                         curr = prev;
