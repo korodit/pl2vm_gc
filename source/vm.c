@@ -2,31 +2,19 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <malloc.h>
 
 #define debug_print(fmt, ...) do { if (DEBUG) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
 
-#define STACK_GROWTH_NUM 8 //2^17
+#define STACK_GROWTH_NUM 131072 //2^17
 #define CON_ADDR 1
 #define INTGER 0
 //Always check if (is_con_addr)
-
-#define check_el_equality(el1,el2) (\
-                                        ((el1).is_con_addr == (el2).is_con_addr) \
-                                    &&\
-                                        (\
-                                            (\
-                                                ((el1).is_con_addr == CON_ADDR)\
-                                            &&\
-                                                ((el1).value.con_addr == (el2).value.con_addr)\
-                                            )\
-                                        ||\
-                                            (\
-                                                ((el1).is_con_addr == INTGER)\
-                                            &&\
-                                                ((el1).value.integer == (el2).value.integer)\
-                                            )\
-                                        )\
-                                    )
+#ifndef REF_COUNT
+    #ifndef MARK_N_SWEEP
+        #define MARK_N_SWEEP
+    #endif
+#endif
 
 #define NEXT_INSTRUCTION \
     goto *(label_tab[*pc])
@@ -106,7 +94,12 @@ struct stack_element{
 typedef struct stack_element stackelement_t;
 
 struct con_cell{
-    int ref_num;
+    #ifdef REF_COUNT 
+        int ref_num;
+    #endif
+    #ifdef MARK_N_SWEEP 
+        char reachable;
+    #endif
     stackelement_t head;
     stackelement_t tail;
 };
@@ -119,20 +112,37 @@ struct {
     int current;
 } stack;
 
-struct list_element{
-    concell_t *con_addr;
-    struct list *next;
-};
+#ifdef MARK_N_SWEEP 
+    #define REACHABLE 1
+    #define UNREACHABLE 0
+    #define GC_MALLOC_LIMIT 1000000
 
-typedef struct list_element list_element;
+    long long int freed;
+    long long int malloced;
 
-list_element *gc_tbr_list;
+    struct mns_list_element{
+        concell_t *con_addr;
+        struct mns_list_element *next;
+    };
+
+    typedef struct mns_list_element mns_list_element;
+
+    mns_list_element *gc_mns_list;
+
+    void mark_sweep();
+    void mark();
+    void sweep();
+    void traverse(stackelement_t el);
+#endif
+
+#ifdef REF_COUNT
+    void ref_butcher(stackelement_t connie);//recursively substracts reference counters
+#endif
 
 void initialize_stack();
 void project_stack_change(int change_number);
 stackelement_t pop_stack();
 void push_stack(stackelement_t newel);
-void ref_butcher();//recursively substracts reference counters
 // (un)signed from n bytes
 uint32_t uf1b(char* mpos);
 uint32_t uf2b(char* mpos);
@@ -331,14 +341,19 @@ int main(int argc, char* argv[]){
     // }
     /////////////////////////
 
+    #ifdef MARK_N_SWEEP
+        freed = 0;
+        malloced = 0;
+        gc_mns_list = NULL;
+        mns_list_element *new_mns_el;
+    #endif
+
     char *pc = program;
     char x;
     stackelement_t elem,newel,el1,el2;
     concell_t *cc;
-
     initialize_stack();
-    gc_tbr_list = NULL;
-    // debug_print("--halt\n");
+    
     while(1){
         char opcode = pc[0];
         switch(opcode){
@@ -377,9 +392,11 @@ int main(int argc, char* argv[]){
             dup_label:
                 // debug_print("--dup %d \n",uf1b(pc+1));
                 newel = stack.stack[stack.current-uf1b(pc+1)];
-                if (newel.is_con_addr){
-                    newel.value.con_addr->ref_num++;
-                }
+                #ifdef REF_COUNT
+                    if (newel.is_con_addr){
+                        newel.value.con_addr->ref_num++;
+                    }
+                #endif
                 push_stack(newel);
                 pc+=_dup_s;
                 NEXT_INSTRUCTION;
@@ -388,7 +405,13 @@ int main(int argc, char* argv[]){
             
             case _drop: // DROP
             drop_label:
-                pop_stack();
+                // pop_stack();
+                el1 = pop_stack();
+                #ifdef REF_COUNT
+                    if (el1.is_con_addr){
+                        ref_butcher(el1);
+                    }
+                #endif
                 pc+=_drop_s;
                 NEXT_INSTRUCTION;
 
@@ -482,7 +505,7 @@ int main(int argc, char* argv[]){
                 newel.is_con_addr = INTGER;
                 el1 = pop_stack();
                 el2 = pop_stack();
-                if check_el_equality(el1,el2){
+                if (el1.value.integer == el2.value.integer){
                         newel.value.integer = 1;
                 }
                 else{
@@ -499,7 +522,7 @@ int main(int argc, char* argv[]){
                 newel.is_con_addr = INTGER;
                 el1 = pop_stack();
                 el2 = pop_stack();
-                if check_el_equality(el1,el2){
+                if (el1.value.integer == el2.value.integer){
                     newel.value.integer = 0;
                 }
                 else{
@@ -643,11 +666,6 @@ int main(int argc, char* argv[]){
             case _output: // OUTPUT
             output_label:
                 el1 = pop_stack();
-                // if((char)el1.value.integer=='*'){
-                //     printf("Found * while being in line %#x\n",(unsigned int)(pc-program));
-                //     x = getchar();
-                //     printf("\nCHAR INCOMING %c\n",x);
-                // }
                 putchar((char)el1.value.integer);
                 pc+=_output_s;
                 NEXT_INSTRUCTION;
@@ -664,18 +682,37 @@ int main(int argc, char* argv[]){
             
             case _cons: //CONS
             cons_label:
+                
                 cc = (concell_t *)malloc(sizeof(concell_t));
                 el1 = pop_stack();
                 el2 = pop_stack();
                 cc->head = el2;
                 cc->tail = el1;
-                cc->ref_num = 1;
-                if (cc->head.is_con_addr){
-                    cc->head.value.con_addr->ref_num++;
-                }
-                if (cc->tail.is_con_addr){
-                    cc->tail.value.con_addr->ref_num++;
-                }
+
+                #ifdef MARK_N_SWEEP
+                    cc->reachable = UNREACHABLE;
+                    malloced++;
+                    new_mns_el = malloc(sizeof(mns_list_element));
+                    new_mns_el->next = gc_mns_list;
+                    new_mns_el->con_addr = cc;
+                    gc_mns_list = new_mns_el;
+
+                    if (malloced == GC_MALLOC_LIMIT){
+                        mark_sweep();
+                        malloced = 0;
+                    }
+                #endif
+                #ifdef REF_COUNT
+                    cc->ref_num = 1;
+                    if (cc->head.is_con_addr){
+                        cc->head.value.con_addr->ref_num++;
+                    }
+                    if (cc->tail.is_con_addr){
+                        cc->tail.value.con_addr->ref_num++;
+                    }
+                #endif
+                
+
                 newel.is_con_addr = CON_ADDR;
                 newel.value.con_addr = cc;
                 push_stack(newel);
@@ -686,8 +723,18 @@ int main(int argc, char* argv[]){
             
             case _hd: // HD
             hd_label:
-                cc = pop_stack().value.con_addr;
+                el1 = pop_stack();
+                cc = el1.value.con_addr;
                 newel = cc->head;
+
+                #ifdef REF_COUNT
+                    if (cc->head.is_con_addr){
+                        cc->head.value.con_addr->ref_num++;
+                    }
+
+                    ref_butcher(el1);
+                #endif
+
                 push_stack(newel);
                 pc+=_hd_s;
                 NEXT_INSTRUCTION;
@@ -696,15 +743,93 @@ int main(int argc, char* argv[]){
             
             case _tl: // TL
             tl_label:
-                cc = pop_stack().value.con_addr;
+                el1 = pop_stack();
+                cc = el1.value.con_addr;
                 newel = cc->tail;
+
+                #ifdef REF_COUNT
+                    if (cc->tail.is_con_addr){
+                        cc->tail.value.con_addr->ref_num++;
+                    }
+
+                    ref_butcher(el1);
+                #endif
+
                 push_stack(newel);
+
                 pc+=_hd_s;
                 NEXT_INSTRUCTION;
         }
     }
 
 }
+
+#ifdef MARK_N_SWEEP
+    void mark_sweep(){
+        mark();
+        sweep();
+    }
+
+    void sweep(){
+        mns_list_element *curr,*next,*prev;
+        curr = gc_mns_list;
+        if (curr!=NULL){
+            while(curr!=NULL && !curr->con_addr->reachable){
+                next = curr->next;
+                free(curr->con_addr);
+                free(curr);
+                curr = next;
+            }
+            gc_mns_list = curr;
+            if (curr!=NULL){
+                prev = curr;
+                curr = curr->next;
+                while(curr!=NULL){
+                    if (!curr->con_addr->reachable){
+                        free(curr->con_addr);
+                        prev->next = curr->next;
+                        free(curr);
+                        curr = prev;
+                    }
+                    curr = curr->next;
+                }
+            }
+        }
+    }
+
+    void mark(){
+        int i;
+        for (i=0;i<=stack.current;i++){
+            traverse(stack.stack[i]);
+        }
+    }
+
+    void traverse(stackelement_t el){
+        if (el.is_con_addr && !el.value.con_addr->reachable){
+            el.value.con_addr->reachable = 1;
+            traverse(el.value.con_addr->head);
+            traverse(el.value.con_addr->tail);
+        }
+    }
+#endif
+
+#ifdef REF_COUNT
+    void ref_butcher(stackelement_t connie){
+        connie.value.con_addr->ref_num--;
+        if (connie.value.con_addr->ref_num == 0){
+            if (connie.value.con_addr->head.is_con_addr){
+                ref_butcher(connie.value.con_addr->head);
+            }
+            if (connie.value.con_addr->tail.is_con_addr){
+                ref_butcher(connie.value.con_addr->tail);
+            }
+
+            free(connie.value.con_addr);
+            freed++;
+
+        }
+    }
+#endif
 
 inline uint32_t uf1b(char* mpos){
     return (uint32_t)( *( (uint8_t *)mpos ) );
