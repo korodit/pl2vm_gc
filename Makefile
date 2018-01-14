@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = 
+# CFLAGS = -DDEBUG
 # GC_MODE = MARK_N_SWEEP
 # GC_MODE = REF_COUNT
 
@@ -13,7 +13,7 @@ vm_rc.out: source/vm.c
 
 vm.out: source/vm.c 
 	$(CC) $(CFLAGS) $? -o out/$@
-	
+
 clear:
 	rm -rf out/* in/*
 

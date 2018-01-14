@@ -16,8 +16,14 @@
     #endif
 #endif
 
+#define ufb(n,k) (n)==1?uf1b(k):((n==2)?uf2b(k):uf2b(k))
+
+#ifndef DEGUG
+    #define DEBUG 0
+#endif
+
 #define NEXT_INSTRUCTION \
-    goto *(label_tab[*pc])
+    debug_print("%s %#x\n",commands[*pc],ufb(lens[*pc],pc+1));goto *(label_tab[*pc])
 
 //operation codes
     #define _halt   0x00
@@ -317,22 +323,22 @@ int main(int argc, char* argv[]){
     };
 
     /////////////////////////
-    // printf("Size of program: %d\nProgram:\n",psize);
-    // i=0;
-    // while(i<psize){
-    //     printf("Line %#x:: %s :: ",i,commands[program[i]]);
-    //     int j;
-    //     if (program[i] == 1 || program[i] == 2){
-    //         printf("(%#x) ",uf2b(&program[i+1]));
-    //     }
-    //     if (program[i] == 5) printf("(%#x) ",sf4b(&program[i+1]));
-    //     if (program[i] == 6) printf("(%#x) ",sf2b(&program[i+1]));
-    //     for(j=1;j<(lens[program[i]]);j++){
-    //         printf("%#x ",program[i+1]);
-    //     }
-    //     printf("\n");
-    //     i+=lens[program[i]];
-    // }
+        // printf("Size of program: %d\nProgram:\n",psize);
+        // i=0;
+        // while(i<psize){
+        //     printf("Line %#x:: %s :: ",i,commands[program[i]]);
+        //     int j;
+        //     if (program[i] == 1 || program[i] == 2){
+        //         printf("(%#x) ",uf2b(&program[i+1]));
+        //     }
+        //     if (program[i] == 5) printf("(%#x) ",sf4b(&program[i+1]));
+        //     if (program[i] == 6) printf("(%#x) ",sf2b(&program[i+1]));
+        //     for(j=1;j<(lens[program[i]]);j++){
+        //         printf("%#x ",program[i+1]);
+        //     }
+        //     printf("\n");
+        //     i+=lens[program[i]];
+        // }
     /////////////////////////
 
     #ifdef MARK_N_SWEEP
@@ -340,9 +346,7 @@ int main(int argc, char* argv[]){
         malloced = 0;
         gc_mns_list = NULL;
     #endif
-
     char *pc = program;
-    char x;
     stackelement_t elem,newel,el1,el2;
     concell_t *cc;
     initialize_stack();
@@ -383,7 +387,6 @@ int main(int argc, char* argv[]){
 
             case _dup: // DUP
             dup_label:
-                // debug_print("--dup %d \n",uf1b(pc+1));
                 newel = stack.stack[stack.current-uf1b(pc+1)];
                 #ifdef REF_COUNT
                     if (newel.is_con_addr){
@@ -398,7 +401,6 @@ int main(int argc, char* argv[]){
             
             case _drop: // DROP
             drop_label:
-                // pop_stack();
                 el1 = pop_stack();
                 #ifdef REF_COUNT
                     if (el1.is_con_addr){
@@ -693,14 +695,9 @@ int main(int argc, char* argv[]){
                         malloced = 0;
                     }
                 #endif
+
                 #ifdef REF_COUNT
                     cc->ref_num = 1;
-                    if (cc->head.is_con_addr){
-                        cc->head.value.con_addr->ref_num++;
-                    }
-                    if (cc->tail.is_con_addr){
-                        cc->tail.value.con_addr->ref_num++;
-                    }
                 #endif
                 
 
@@ -748,7 +745,7 @@ int main(int argc, char* argv[]){
 
                 push_stack(newel);
 
-                pc+=_hd_s;
+                pc+=_tl_s;
                 NEXT_INSTRUCTION;
         }
     }
@@ -814,7 +811,6 @@ int main(int argc, char* argv[]){
             }
 
             free(connie.value.con_addr);
-            freed++;
 
         }
     }
