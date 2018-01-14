@@ -10,9 +10,9 @@
 #define CON_ADDR 1
 #define INTGER 0
 //Always check if (is_con_addr)
-#ifndef REF_COUNT
-    #ifndef MARK_N_SWEEP
-        #define MARK_N_SWEEP
+#ifndef MARK_N_SWEEP
+    #ifndef REF_COUNT
+        #define REF_COUNT
     #endif
 #endif
 
@@ -848,17 +848,19 @@ inline void project_stack_change(int change_number){
 
     stack.current += change_number;
 
-    if (stack.current< -1){
-        //ERROR CODE
-    }
-    else if (stack.current >= stack.size){
-        stack.size = stack.size+(STACK_GROWTH_NUM);
-        stack.stack = realloc(stack.stack,stack.size*sizeof(stackelement_t));
-    }
-    else if ((stack.size > STACK_GROWTH_NUM) && ((stack.size / (stack.current + 1)) >= 3)){
-        stack.size = (stack.size/2) + (STACK_GROWTH_NUM - ((stack.size/2) % STACK_GROWTH_NUM)) % STACK_GROWTH_NUM;
-        stack.stack = realloc(stack.stack,stack.size*sizeof(stackelement_t));
-    }
+    #ifdef DYNAMIC_STACK
+        if (stack.current< -1){
+            //ERROR CODE
+        }
+        else if (stack.current >= stack.size){
+            stack.size = stack.size+(STACK_GROWTH_NUM);
+            stack.stack = realloc(stack.stack,stack.size*sizeof(stackelement_t));
+        }
+        else if ((stack.size > STACK_GROWTH_NUM) && ((stack.size / (stack.current + 1)) >= 3)){
+            stack.size = (stack.size/2) + (STACK_GROWTH_NUM - ((stack.size/2) % STACK_GROWTH_NUM)) % STACK_GROWTH_NUM;
+            stack.stack = realloc(stack.stack,stack.size*sizeof(stackelement_t));
+        }
+    #endif
 }
 
 inline void initialize_stack(){
