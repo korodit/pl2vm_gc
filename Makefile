@@ -21,5 +21,5 @@ vm.out: source/vm.c
 	$(CC) $(CFLAGS) $? -o out/$@
 
 clear:
-	rm -rf out/* in/*
+	rm -rf out/*
 
